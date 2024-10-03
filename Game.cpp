@@ -8,6 +8,39 @@
 
 #include <glm/gtx/norm.hpp>
 
+void Player::Controls::send_handshake(Connection *connection_, bool is_gatherer) const {
+	assert(connection_);
+	auto &connection = *connection_;
+	if (is_gatherer){
+		char payload[16] = {'H', 14, 'g', 'l', 'e','t','c','u','t' ,'w','e','i','w','e','n','j'};
+
+		connection.send_raw(payload, 16);
+	}
+	else {
+		char payload[16] = {'H', 14, 's', 'l', 'e','t','c','u','t' ,'w','e','i','w','e','n','j'};
+
+		connection.send_raw(payload, 16);
+	}
+}
+
+void Player::Controls::send_dir(Connection *connection_, int dir) const {
+	assert(connection_);
+	auto &connection = *connection_;
+	char dir_ = '.';
+	if (dir == 0)
+		dir_ = 'N';
+	else if (dir == 1)
+		dir_ = 'S';
+	else if (dir == 2)
+		dir_ = 'E';
+	else if (dir == 3)
+		dir_ = 'W';
+	else if (dir == 4)
+		dir_= 'f';
+	char payload[3] = {'M', 1, dir_};
+	connection.send_raw(payload, 3);
+}
+
 void Player::Controls::send_controls_message(Connection *connection_) const {
 	assert(connection_);
 	auto &connection = *connection_;

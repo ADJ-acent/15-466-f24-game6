@@ -11,7 +11,8 @@
 #include <random>
 #include <array>
 
-PlayMode::PlayMode(Client &client_) : client(client_) {
+PlayMode::PlayMode(Client &client_, bool seeker_ = false) : client(client_), seeker(seeker_) {
+	
 }
 
 PlayMode::~PlayMode() {
@@ -68,7 +69,51 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 void PlayMode::update(float elapsed) {
 
 	//queue data for sending to server:
-	controls.send_controls_message(&client.connection);
+	//controls.send_controls_message(&client.connection);
+	auto handshake = [&](){controls.send_handshake(&client.connection, !seeker); return 0;};
+	static int h = handshake();
+
+	static int move_dir = -1;
+	static float count = -0.01f;
+	static bool can_move = false;
+	static float since_last = 0.1f;
+	if (since_last != 0.0f) {
+		since_last += elapsed;
+		if (since_last > 10.0f) {
+			since_last = 0.1f;
+			controls.send_dir(&client.connection, 5);
+			can_move = false;
+		}
+	}
+
+	if (controls.up.pressed) {
+
+		move_dir = 0;
+	}
+	else if (controls.down.pressed) {
+
+		move_dir = 1;
+	}
+	else if (controls.right.pressed) {
+
+		move_dir = 2;
+	}
+	else if (controls.left.pressed) {
+
+		move_dir = 3;
+	}
+	else if (controls.jump.pressed) {
+		move_dir = 4;
+	}
+	if (move_dir != -1 && can_move) {
+		since_last = 0.1f;
+		can_move = false;
+		controls.send_dir(&client.connection,move_dir);
+		move_dir = -1;
+	}
+	// else if (controls.up.pressed) {
+	// 	controls.send_dir(&client.connection,0);
+	// }
 
 	//reset button press counters:
 	controls.left.downs = 0;
@@ -85,18 +130,22 @@ void PlayMode::update(float elapsed) {
 			std::cout << "[" << c->socket << "] closed (!)" << std::endl;
 			throw std::runtime_error("Lost connection to server!");
 		} else { assert(event == Connection::OnRecv);
-			//std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush(); //DEBUG
-			bool handled_message;
-			try {
-				do {
-					handled_message = false;
-					if (game.recv_state_message(c)) handled_message = true;
-				} while (handled_message);
-			} catch (std::exception const &e) {
-				std::cerr << "[" << c->socket << "] malformed message from server: " << e.what() << std::endl;
-				//quit the game:
-				throw e;
-			}
+			bool handled_message = false;
+			do {
+				handled_message = false;
+				(void)this;
+				if (c->recv_buffer.size() >= 2) {
+					char type = char(c->recv_buffer[0]);
+					if (type == 'V' )can_move = true;
+					size_t length = uint8_t(c->recv_buffer[1]);
+					if (c->recv_buffer.size() < length + 2) break;
+					std::string message = std::string(c->recv_buffer.data() + 2, c->recv_buffer.data() + 2 + length);
+					c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 2 + length);
+					std::cout << type << " of " << length << ": " << message << std::endl;
+					//TODO: check type and handle specific messages
+					handled_message = true;
+				}
+			} while (handled_message);
 		}
 	}, 0.0);
 }

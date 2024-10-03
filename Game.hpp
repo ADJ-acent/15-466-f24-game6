@@ -32,6 +32,10 @@ struct Player {
 
 		void send_controls_message(Connection *connection) const;
 
+		void send_handshake(Connection *connection, bool is_gatherer) const;
+
+		void send_dir(Connection *connection, int dir) const;
+
 		//returns 'false' if no message or not a controls message,
 		//returns 'true' if read a controls message,
 		//throws on malformed controls message

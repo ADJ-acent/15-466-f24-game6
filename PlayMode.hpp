@@ -9,7 +9,7 @@
 #include <deque>
 
 struct PlayMode : Mode {
-	PlayMode(Client &client);
+	PlayMode(Client &client, bool seeker);
 	virtual ~PlayMode();
 
 	//functions called by main loop:
@@ -30,5 +30,7 @@ struct PlayMode : Mode {
 
 	//connection to server:
 	Client &client;
+
+	bool seeker = false;
 
 };
