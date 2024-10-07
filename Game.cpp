@@ -74,34 +74,29 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 
 //-----------------------------------------
 
-Game::Game() : mt(0x15466666) {
+Game::Game() {
 }
 
 Player *Game::spawn_player() {
-	players.emplace_back();
-	Player &player = players.back();
-
-	//random point in the middle area of the arena:
-	player.position.x = glm::mix(ArenaMin.x + 2.0f * PlayerRadius, ArenaMax.x - 2.0f * PlayerRadius, 0.4f + 0.2f * mt() / float(mt.max()));
-	player.position.y = glm::mix(ArenaMin.y + 2.0f * PlayerRadius, ArenaMax.y - 2.0f * PlayerRadius, 0.4f + 0.2f * mt() / float(mt.max()));
-
-	do {
-		player.color.r = mt() / float(mt.max());
-		player.color.g = mt() / float(mt.max());
-		player.color.b = mt() / float(mt.max());
-	} while (player.color == glm::vec3(0.0f));
-	player.color = glm::normalize(player.color);
-
-	player.name = "Player " + std::to_string(next_player_number++);
+	players[next_player_number] = Player(next_player_number);
+	Player &player = players[next_player_number];
+	if (next_player_number == 0) {
+		player.position = red_hamster_start;
+	}
+	else if (next_player_number == 1) {
+		player.position = blue_hamster_start;
+	}
+	next_player_number++;
 
 	return &player;
 }
 
 void Game::remove_player(Player *player) {
 	bool found = false;
-	for (auto pi = players.begin(); pi != players.end(); ++pi) {
-		if (&*pi == player) {
-			players.erase(pi);
+	for (uint8_t i = 0; i < uint8_t(players.size()); ++i) {
+		Player * cur_player = &players[i];
+		if (cur_player == player) {
+			cur_player->player_type = Player::PlayerType::Uninitialized;
 			found = true;
 			break;
 		}
@@ -205,12 +200,13 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(player.position);
 		connection.send(player.velocity);
 		connection.send(player.color);
+		connection.send(player.player_type);
 	
 		//NOTE: can't just 'send(name)' because player.name is not plain-old-data type.
 		//effectively: truncates player name to 255 chars
-		uint8_t len = uint8_t(std::min< size_t >(255, player.name.size()));
-		connection.send(len);
-		connection.send_buffer.insert(connection.send_buffer.end(), player.name.begin(), player.name.begin() + len);
+		// uint8_t len = uint8_t(std::min< size_t >(255, player.name.size()));
+		// connection.send(len);
+		// connection.send_buffer.insert(connection.send_buffer.end(), player.name.begin(), player.name.begin() + len);
 	};
 
 	//player count:
@@ -251,24 +247,23 @@ bool Game::recv_state_message(Connection *connection_) {
 		at += sizeof(*val);
 	};
 
-	players.clear();
 	uint8_t player_count;
 	read(&player_count);
 	for (uint8_t i = 0; i < player_count; ++i) {
-		players.emplace_back();
-		Player &player = players.back();
+		Player &player = players[i];
 		read(&player.position);
 		read(&player.velocity);
 		read(&player.color);
-		uint8_t name_len;
-		read(&name_len);
+		read(&player.player_type);
+		// uint8_t name_len;
+		// read(&name_len);
 		//n.b. would probably be more efficient to directly copy from recv_buffer, but I think this is clearer:
-		player.name = "";
-		for (uint8_t n = 0; n < name_len; ++n) {
-			char c;
-			read(&c);
-			player.name += c;
-		}
+		// player.name = "";
+		// for (uint8_t n = 0; n < name_len; ++n) {
+		// 	char c;
+		// 	read(&c);
+		// 	player.name += c;
+		// }
 	}
 
 	if (at != size) throw std::runtime_error("Trailing data in state message.");
@@ -277,4 +272,14 @@ bool Game::recv_state_message(Connection *connection_) {
 	recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);
 
 	return true;
+}
+
+Player::Player() :
+player_type(Uninitialized)
+{
+}
+
+Player::Player(uint8_t player_index)
+{
+	player_type = static_cast<PlayerType>(std::clamp(player_index, uint8_t(0) ,uint8_t(2)));
 }

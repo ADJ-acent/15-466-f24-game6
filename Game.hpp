@@ -4,6 +4,7 @@
 
 #include <string>
 #include <list>
+#include <array>
 #include <random>
 
 struct Connection;
@@ -14,6 +15,7 @@ struct Connection;
 
 enum class Message : uint8_t {
 	C2S_Controls = 1, //Greg!
+	C2S_Handshake = 2, //Get the player role
 	S2C_State = 's',
 	//...
 };
@@ -43,16 +45,23 @@ struct Player {
 	glm::vec2 velocity = glm::vec2(0.0f, 0.0f);
 
 	glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
-	std::string name = "";
+	enum PlayerType : uint8_t {
+		RedHamster = 0,
+		BlueHamster = 1,
+		Spectator = 2,
+		Uninitialized = 3,
+	} player_type = PlayerType::Spectator;
+
+	Player();
+	Player(uint8_t player_index);
 };
 
 struct Game {
-	std::list< Player > players; //(using list so they can have stable addresses)
+	std::array< Player, 3 > players; //last one is spectator
 	Player *spawn_player(); //add player the end of the players list (may also, e.g., play some spawn anim)
 	void remove_player(Player *); //remove player from game (may also, e.g., play some despawn anim)
 
-	std::mt19937 mt; //used for spawning players
-	uint32_t next_player_number = 1; //used for naming players
+	uint8_t next_player_number = 0; //used for naming players and keeping track of who is in the game and who is spectating
 
 	Game();
 
@@ -64,14 +73,17 @@ struct Game {
 	inline static constexpr float Tick = 1.0f / 30.0f;
 
 	//arena size:
-	inline static constexpr glm::vec2 ArenaMin = glm::vec2(-0.75f, -1.0f);
-	inline static constexpr glm::vec2 ArenaMax = glm::vec2( 0.75f,  1.0f);
+	inline static constexpr glm::vec2 ArenaMin = glm::vec2(-22.5f, -22.5f);
+	inline static constexpr glm::vec2 ArenaMax = glm::vec2( 22.5f,  22.5f);
 
 	//player constants:
 	inline static constexpr float PlayerRadius = 0.06f;
 	inline static constexpr float PlayerSpeed = 2.0f;
 	inline static constexpr float PlayerAccelHalflife = 0.25f;
-	
+
+	//hamster positions
+	const glm::vec3 red_hamster_start = {1.0f, -22.0f, 1.8477f};
+	const glm::vec3 blue_hamster_start = {1.0f, 22.0f, 1.8477f};
 
 	//---- communication helpers ----
 

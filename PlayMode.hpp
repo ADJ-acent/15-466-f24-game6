@@ -1,5 +1,6 @@
 #include "Mode.hpp"
 
+#include "Scene.hpp"
 #include "Connection.hpp"
 #include "Game.hpp"
 
@@ -25,8 +26,21 @@ struct PlayMode : Mode {
 	//latest game state (from server):
 	Game game;
 
+	//local copy of scene
+	Scene scene;
+
+	//player camera
+	Scene::Camera *camera = nullptr;
+
 	//last message from server:
 	std::string server_message;
+
+	//hamsters
+	struct Hamster {
+		Scene::Transform *hamster_transform;
+		Scene::Transform *lance_transform;
+		Scene::Transform *wheel_transform;
+	} hamster_red, hamster_blue;
 
 	//connection to server:
 	Client &client;
