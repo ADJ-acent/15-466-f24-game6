@@ -20,6 +20,9 @@ struct PlayMode : Mode {
 
 	//----- game state -----
 
+	//handle new game state passed from server
+	void update_to_server_state();
+
 	//input tracking for local player:
 	Player::Controls controls;
 

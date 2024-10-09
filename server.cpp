@@ -86,6 +86,7 @@ int main(int argc, char **argv) {
 					//look up in players list:
 					auto f = connection_to_player.find(c);
 					assert(f != connection_to_player.end());
+					if (f->second == nullptr) return;
 					Player &player = *f->second;
 
 					//handle messages from client:

@@ -4,7 +4,6 @@
 #include "DrawLines.hpp"
 #include "gl_errors.hpp"
 #include "Mesh.hpp"
-#include "Load.hpp"
 #include "data_path.hpp"
 #include "hex_dump.hpp"
 // for image import
@@ -91,9 +90,25 @@ PlayMode::PlayMode(Client &client_) : client(client_) {
 	scene = *main_scene;
 
 	for (auto &transform : scene.transforms) {
-		if (transform.name == "RedHamster") hamster_red.hamster_transform = &transform;
+		if (transform.name == "RedHamster") {
+			hamster_red.hamster_transform = &transform;
+		}
 		else if (transform.name == "BlueHamster") {
 			hamster_blue.hamster_transform = &transform;
+		}
+		else if (transform.name == "BlueLance") {
+			hamster_blue.lance_transform = &transform;
+		}
+		else if (transform.name == "BlueWheel") {
+			hamster_blue.wheel_transform = &transform;
+			std::cout<<"blue wheel: "<<transform.scale.x<<", "<<transform.scale.y<<", "<<transform.scale.z<<"\n ";
+		}
+		else if (transform.name == "RedLance") {
+			hamster_red.lance_transform = &transform;
+		}
+		else if (transform.name == "RedWheel") {
+			hamster_red.wheel_transform = &transform;
+			std::cout<<"red wheel: "<<transform.scale.x<<", "<<transform.scale.y<<", "<<transform.scale.z<<"\n ";
 		}
 	}
 	auto camera_it = scene.cameras.begin();
@@ -104,8 +119,27 @@ PlayMode::PlayMode(Client &client_) : client(client_) {
 PlayMode::~PlayMode() {
 }
 
-bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
+void PlayMode::update_to_server_state()
+{
+	auto camera_it = scene.cameras.begin();
+	std::advance(camera_it,static_cast<uint8_t>(game.player_type));
+	camera = &(*camera_it);
+	hamster_red.hamster_transform->position = game.players[0].position;
+	hamster_red.hamster_transform->rotation = game.players[0].rotation;
+	hamster_red.wheel_transform->rotation = game.players[0].wheel_rotation;
+	hamster_red.lance_transform->rotation = game.players[0].lance_rotation;
+	hamster_red.lance_transform->position = game.players[0].lance_position;
 
+	hamster_blue.hamster_transform->position = game.players[1].position;
+	hamster_blue.hamster_transform->rotation = game.players[1].rotation;
+	hamster_blue.wheel_transform->rotation = game.players[1].wheel_rotation;
+	hamster_blue.lance_transform->rotation = game.players[1].lance_rotation;
+	hamster_blue.lance_transform->position = game.players[1].lance_position;
+
+}
+
+bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
+	if (game.player_type == Spectator) return false;
 	if (evt.type == SDL_KEYDOWN) {
 		if (evt.key.repeat) {
 			//ignore repeats
@@ -129,6 +163,8 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.jump.downs += 1;
 			controls.jump.pressed = true;
 			return true;
+		} else if (evt.key.keysym.sym == SDLK_ESCAPE) {
+			SDL_SetRelativeMouseMode(SDL_FALSE);
 		}
 	} else if (evt.type == SDL_KEYUP) {
 		if (evt.key.keysym.sym == SDLK_a) {
@@ -147,6 +183,24 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			controls.jump.pressed = false;
 			return true;
 		}
+	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
+		if (SDL_GetRelativeMouseMode() == SDL_FALSE) {
+			SDL_SetRelativeMouseMode(SDL_TRUE);
+			return true;
+		}
+		else {
+			controls.LMB.downs += 1;
+			controls.LMB.pressed = true;
+			return true;
+		}
+	}else if (evt.type == SDL_MOUSEBUTTONUP) {
+			controls.LMB.pressed = false;
+			return true;
+	} else if (evt.type == SDL_MOUSEMOTION) {
+		if (SDL_GetRelativeMouseMode() == SDL_TRUE) {
+			controls.mouse_x = evt.motion.xrel / float(window_size.y);
+			return true;
+		}
 	}
 
 	return false;
@@ -163,6 +217,8 @@ void PlayMode::update(float elapsed) {
 	controls.up.downs = 0;
 	controls.down.downs = 0;
 	controls.jump.downs = 0;
+	controls.LMB.downs = 0;
+	controls.mouse_x = 0.0f;
 
 	//send/receive data:
 	client.poll([this](Connection *c, Connection::Event event){
@@ -177,7 +233,10 @@ void PlayMode::update(float elapsed) {
 			try {
 				do {
 					handled_message = false;
-					if (game.recv_state_message(c)) handled_message = true;
+					if (game.recv_state_message(c)) {
+						handled_message = true;
+						update_to_server_state();
+					}
 				} while (handled_message);
 			} catch (std::exception const &e) {
 				std::cerr << "[" << c->socket << "] malformed message from server: " << e.what() << std::endl;
@@ -186,29 +245,6 @@ void PlayMode::update(float elapsed) {
 			}
 		}
 	}, 0.0);
-
-	if (game.players[0].player_type == Player::PlayerType::RedHamster) {
-		auto camera_it = scene.cameras.begin();
-		camera = &(*camera_it);
-		hamster_red.hamster_transform->position.x = game.players[0].position.x;
-		hamster_red.hamster_transform->position.y = game.players[0].position.y;
-		if (game.players[1].player_type == Player::PlayerType::BlueHamster) {
-			hamster_blue.hamster_transform->position.x = game.players[1].position.x;
-			hamster_blue.hamster_transform->position.y = game.players[1].position.y;
-		}
-	}
-	else if (game.players[0].player_type == Player::PlayerType::BlueHamster) {
-		auto camera_it = scene.cameras.begin();
-		std::advance(camera_it,1);
-		camera = &(*camera_it);
-		hamster_blue.hamster_transform->position.x = game.players[0].position.x;
-		hamster_blue.hamster_transform->position.y = game.players[0].position.y;
-		if (game.players[1].player_type == Player::PlayerType::RedHamster) {
-			hamster_red.hamster_transform->position.x = game.players[1].position.x;
-			hamster_red.hamster_transform->position.y = game.players[1].position.y;
-		}
-	}
-	
 
 }
 
