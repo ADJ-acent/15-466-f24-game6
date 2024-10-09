@@ -7,9 +7,11 @@
 #include "data_path.hpp"
 #include "hex_dump.hpp"
 #include "UIRenderProgram.hpp"
+#include "FontRenderProgram.hpp"
 // for image import
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#include "Font.hpp"
 
 
 #include <glm/gtc/type_ptr.hpp>
@@ -26,6 +28,11 @@ GLuint wall_tex = 0;
 GLuint blue_hamster_UI = 0;
 GLuint red_hamster_UI = 0;
 GLuint health_UI_fill = 0;
+GLuint main_menu = 0;
+
+Load< Font > font(LoadTagDefault, []() -> Font const * {
+	return new Font(data_path("ui/Fredoka-Medium.ttf"));
+});
 
 Load< MeshBuffer > main_meshes(LoadTagDefault, []() -> MeshBuffer const * {
 	MeshBuffer const *ret = new MeshBuffer(data_path("arena.pnct"));
@@ -63,16 +70,11 @@ Load< void > load_texture(LoadTagDefault, []() -> void {
 	};
 
 	hamster_tex = load_tex_to_GL(data_path("textures/hamster_tex.png"));
-	std::cout <<"loaded hamster texture: "<<hamster_tex<<std::endl;
 	wall_tex = load_tex_to_GL(data_path("textures/colormap.png"));
-	std::cout <<"loaded wall texture: "<<wall_tex<<std::endl;
 	red_hamster_UI = load_tex_to_GL(data_path("ui/HamsterHealthRed.png"));
-	std::cout <<"loaded red hamster health ui: "<<red_hamster_UI<<std::endl;
 	blue_hamster_UI = load_tex_to_GL(data_path("ui/HamsterHealthBlue.png"));
-	std::cout <<"loaded blue hamster health ui: "<<blue_hamster_UI<<std::endl;
 	health_UI_fill = load_tex_to_GL(data_path("ui/HamsterHealthFill.png"));
-	std::cout <<"loaded hamster health fill ui: "<<health_UI_fill<<std::endl;
-
+	main_menu = load_tex_to_GL(data_path("ui/MainMenu.png"));
 
 });
 
@@ -134,8 +136,14 @@ PlayMode::~PlayMode() {
 void PlayMode::update_to_server_state()
 {
 	auto camera_it = scene.cameras.begin();
-	std::advance(camera_it,static_cast<uint8_t>(game.player_type));
-	camera = &(*camera_it);
+	if (game.game_state != Game::WaitingForPlayer) {
+		std::advance(camera_it,static_cast<uint8_t>(game.player_type));
+		camera = &(*camera_it);
+	}
+	else { //everyone should spectate when game is missing player
+		std::advance(camera_it,2);
+		camera = &(*camera_it);
+	}
 	hamster_red.hamster_transform->position = game.players[0].position;
 	hamster_red.hamster_transform->rotation = game.players[0].rotation;
 	hamster_red.wheel_transform->rotation = game.players[0].wheel_rotation;
@@ -151,7 +159,6 @@ void PlayMode::update_to_server_state()
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
-	if (game.player_type == Spectator) return false;
 	if (evt.type == SDL_KEYDOWN) {
 		if (evt.key.repeat) {
 			//ignore repeats
@@ -177,6 +184,9 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			return true;
 		} else if (evt.key.keysym.sym == SDLK_ESCAPE) {
 			SDL_SetRelativeMouseMode(SDL_FALSE);
+		} else if (evt.key.keysym.sym == SDLK_e && game.game_state == Game::WaitingForPlayer) {
+			game.send_handshake_message(&client.connection);
+			return true;
 		}
 	} else if (evt.type == SDL_KEYUP) {
 		if (evt.key.keysym.sym == SDLK_a) {
@@ -221,7 +231,9 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 void PlayMode::update(float elapsed) {
 
 	//queue data for sending to server:
-	controls.send_controls_message(&client.connection);
+	if (game.player_type != Spectator && game.game_state == Game::GameState::InGame) {
+		controls.send_controls_message(&client.connection);
+	}
 
 	//reset button press counters:
 	controls.left.downs = 0;
@@ -262,58 +274,18 @@ void PlayMode::update(float elapsed) {
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
 
+	if (game.game_state == Game::WaitingForPlayer) {
+		draw_start_menu(drawable_size);
+		return;
+	}
+
 	camera->aspect = float(drawable_size.x) / float(drawable_size.y);
 	
-	//set up light type and position for lit_color_texture_program:
-	// TODO: consider using the Light(s) in the scene to do this
 	glUseProgram(lit_color_texture_program->program);
 	glUniform1i(lit_color_texture_program->LIGHT_TYPE_int, 1);
 	glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f,-1.0f)));
 	glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.95f)));
 	glUseProgram(0);
-
-	// {//let player know they are dead
-	// 	float aspect = float(drawable_size.x) / float(drawable_size.y);
-	// 	DrawLines lines(glm::mat4(
-	// 		1.0f / aspect, 0.0f, 0.0f, 0.0f,
-	// 		0.0f, 1.0f, 0.0f, 0.0f,
-	// 		0.0f, 0.0f, 1.0f, 0.0f,
-	// 		0.0f, 0.0f, 0.0f, 1.0f
-	// 	));
-	// 	constexpr float H = 0.09f;
-	// 	if (game_end) {
-	// 		glClearColor(0.8f, .7569f, .5f, 1.0f);
-	// 		float ofs = 6.0f / drawable_size.y;
-	// 		lines.draw_text("DEAD HAMSTER",
-	// 			glm::vec3(-float(drawable_size.x)*H / 200.0f, 0.35f, 0.0),
-	// 			glm::vec3(H*3, 0.0f, 0.0f), glm::vec3(0.0f, H*3, 0.0f),
-	// 			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
-	// 		lines.draw_text("DEAD HAMSTER",
-	// 			glm::vec3(-float(drawable_size.x)*H / 200.0f + ofs, ofs +0.35f, 0.0),
-	// 			glm::vec3(H*3, 0.0f, 0.0f), glm::vec3(0.0f, H*3, 0.0f),
-	// 			glm::u8vec4(0xff, 0x00, 0x00, 0x00));
-	// 		lines.draw_text("Press 'r' to restart",
-	// 			glm::vec3(-float(drawable_size.x)*H / 225.0f, -0.5f, 0.0),
-	// 			glm::vec3(H*2.0f, 0.0f, 0.0f), glm::vec3(0.0f, H*2.0f, 0.0f),
-	// 			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
-	// 		lines.draw_text("Press 'r' to restart",
-	// 			glm::vec3(-float(drawable_size.x)*H  / 225.0f+ofs, -.5f, 0.0),
-	// 			glm::vec3(H*2, 0.0f, 0.0f), glm::vec3(0.0f, H*2.0f, 0.0f),
-	// 			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
-	// 		lines.draw_text("Score: " + std::to_string(score),
-	// 			glm::vec3(-float(drawable_size.x)*H / 350.0f, -.25f, 0.0),
-	// 			glm::vec3(H*2, 0.0f, 0.0f), glm::vec3(0.0f, H*2, 0.0f),
-	// 			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
-	// 		lines.draw_text("Score: " + std::to_string(score),
-	// 			glm::vec3(-float(drawable_size.x)*H / 350.0f + ofs, -0.25f + ofs, 0.0),
-	// 			glm::vec3(H*2, 0.0f, 0.0f), glm::vec3(0.0f, H*2, 0.0f),
-	// 			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
-	// 		glClearDepth(1.0f); //1.0 is actually the default value to clear the depth buffer to, but FYI you can change it.
-	// 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	// 		GL_ERRORS(); //print any errors produced by this setup code
-	// 		return;
-	// 	}
-	// }
 
 	glClearColor(0.435f, 0.80f, 1.0f, 1.0f);
 	glClearDepth(1.0f); //1.0 is actually the default value to clear the depth buffer to, but FYI you can change it.
@@ -359,108 +331,263 @@ void PlayMode::draw_ui(glm::uvec2 const &drawable_size)
     glBindVertexArray(VAO);
 	GL_ERRORS();
 
-	const float health_size = 256.0f;
-	float xpos = health_size / 8.0f;
-	float ypos = - health_size / 4.0f;
-	float w = health_size;
-	float h = health_size;
-	float red_health = std::clamp(float(game.players[0].health) / 25.0f, 0.0f, 0.75f);
-	float blue_health = std::clamp(float(game.players[1].health) / 25.0f, 0.0f, 0.75f);
-	
-	if (game.player_type == BlueHamster) {
-		glUniform3f(ui_render_program->TexColor_vec3, 0.3f, 0.5f, 0.9f);
-		w = 0.25f * w + blue_health * w;
-	}
-	else {
-		glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 0.3f, 0.3f);
-		w = 0.25f * w + red_health * w;
-	}
-	float vertices_health_bottom[4][4] = {
-		{ xpos, ypos,   0.0f, 0.0f }, // Top-left
-		{ xpos + w, ypos, 1.0f, 0.0f },  // Top-right      
-		{ xpos, ypos + h, 0.0f, 1.0f }, // Bottom-left
-		{ xpos + w, ypos + h, 1.0f, 1.0f }, // Bottom-right
-	};
-	glBindTexture(GL_TEXTURE_2D, health_UI_fill);
-	// update content of VBO memory
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_health_bottom), vertices_health_bottom); 
-	// render triangle strip
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	xpos = health_size / 8.0f;
-	ypos = - health_size / 4.0f;
-	w = health_size;
-	h = health_size;
-	float vertices_bottom[4][4] = {
-		{ xpos, ypos,   0.0f, 0.0f }, // Top-left
-		{ xpos + w, ypos, 1.0f, 0.0f },  // Top-right      
-		{ xpos, ypos + h, 0.0f, 1.0f }, // Bottom-left
-		{ xpos + w, ypos + h, 1.0f, 1.0f }, // Bottom-right
-	};
 
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_bottom), vertices_bottom); 
-	glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 1.0f, 1.0f);
-	if (game.player_type == BlueHamster) {
-		glBindTexture(GL_TEXTURE_2D, blue_hamster_UI);
-	}
-	else {
-		glBindTexture(GL_TEXTURE_2D, red_hamster_UI);
-	}
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	GL_ERRORS();
-	xpos = health_size * 0.35f;
-	ypos = health_size * 0.25f;
-	w = health_size * 0.7f;
-	h = w;
+	assert(game.game_state != Game::WaitingForPlayer);
+	if (game.game_state == Game::InGame){
+		const float health_size = 256.0f;
+		float xpos = health_size / 8.0f;
+		float ypos = - health_size / 4.0f;
+		float w = health_size;
+		float h = health_size;
+		float red_health = std::clamp(float(game.players[0].health) / 25.0f, 0.0f, 0.75f);
+		float blue_health = std::clamp(float(game.players[1].health) / 25.0f, 0.0f, 0.75f);
+		if (game.player_type == BlueHamster) {
+			glUniform3f(ui_render_program->TexColor_vec3, 0.3f, 0.5f, 0.9f);
+			w = 0.25f * w + blue_health * w;
+		}
+		else {
+			glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 0.3f, 0.3f);
+			w = 0.25f * w + red_health * w;
+		}
+		float vertices_health_bottom[4][4] = {
+			{ xpos, ypos,   0.0f, 0.0f }, // Top-left
+			{ xpos + w, ypos, 1.0f, 0.0f },  // Top-right      
+			{ xpos, ypos + h, 0.0f, 1.0f }, // Bottom-left
+			{ xpos + w, ypos + h, 1.0f, 1.0f }, // Bottom-right
+		};
+		glBindTexture(GL_TEXTURE_2D, health_UI_fill);
+		// update content of VBO memory
+		glBindBuffer(GL_ARRAY_BUFFER, VBO);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_health_bottom), vertices_health_bottom); 
+		// render triangle strip
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		xpos = health_size / 8.0f;
+		ypos = - health_size / 4.0f;
+		w = health_size;
+		h = health_size;
+		float vertices_bottom[4][4] = {
+			{ xpos, ypos,   0.0f, 0.0f }, // Top-left
+			{ xpos + w, ypos, 1.0f, 0.0f },  // Top-right      
+			{ xpos, ypos + h, 0.0f, 1.0f }, // Bottom-left
+			{ xpos + w, ypos + h, 1.0f, 1.0f }, // Bottom-right
+		};
 
-    if (game.player_type == BlueHamster) {
-		glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 0.3f, 0.3f);
-		w = 0.25f * w + red_health * w;
-	}
-	else {
-		glUniform3f(ui_render_program->TexColor_vec3, 0.3f, 0.5f, 0.9f);
-		w = 0.25f * w + blue_health * w;
-	}
-	float vertices_health_top [4][4] = {
-		{ xpos, ypos,   0.0f, 0.0f }, // Top-left
-		{ xpos + w, ypos, 1.0f, 0.0f },  // Top-right      
-		{ xpos, ypos + h, 0.0f, 1.0f }, // Bottom-left
-		{ xpos + w, ypos + h, 1.0f, 1.0f }, // Bottom-right
-	};
-	glBindTexture(GL_TEXTURE_2D, health_UI_fill);
-	// update content of VBO memory
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_health_top), vertices_health_top); 
-	// render triangle strip
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	GL_ERRORS();
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_bottom), vertices_bottom); 
+		glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 1.0f, 1.0f);
+		if (game.player_type == BlueHamster) {
+			glBindTexture(GL_TEXTURE_2D, blue_hamster_UI);
+		}
+		else {
+			glBindTexture(GL_TEXTURE_2D, red_hamster_UI);
+		}
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		GL_ERRORS();
+		xpos = health_size * 0.35f;
+		ypos = health_size * 0.25f;
+		w = health_size * 0.7f;
+		h = w;
 
-	xpos = health_size * 0.35f;
-	ypos = health_size * 0.25f;
-	w = health_size * 0.7f;
-	h = w;
-	float vertices_top[4][4] = {
-		{ xpos, ypos,   0.0f, 0.0f }, // Top-left
-		{ xpos + w, ypos, 1.0f, 0.0f },  // Top-right      
-		{ xpos, ypos + h, 0.0f, 1.0f }, // Bottom-left
-		{ xpos + w, ypos + h, 1.0f, 1.0f }, // Bottom-right
-	};
-	if (game.player_type == BlueHamster) {
-		glBindTexture(GL_TEXTURE_2D, red_hamster_UI);
+		if (game.player_type == BlueHamster) {
+			glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 0.3f, 0.3f);
+			w = 0.25f * w + red_health * w;
+		}
+		else {
+			glUniform3f(ui_render_program->TexColor_vec3, 0.3f, 0.5f, 0.9f);
+			w = 0.25f * w + blue_health * w;
+		}
+		float vertices_health_top [4][4] = {
+			{ xpos, ypos,   0.0f, 0.0f }, // Top-left
+			{ xpos + w, ypos, 1.0f, 0.0f },  // Top-right      
+			{ xpos, ypos + h, 0.0f, 1.0f }, // Bottom-left
+			{ xpos + w, ypos + h, 1.0f, 1.0f }, // Bottom-right
+		};
+		glBindTexture(GL_TEXTURE_2D, health_UI_fill);
+		// update content of VBO memory
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_health_top), vertices_health_top); 
+		// render triangle strip
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+
+		xpos = health_size * 0.35f;
+		ypos = health_size * 0.25f;
+		w = health_size * 0.7f;
+		h = w;
+		float vertices_top[4][4] = {
+			{ xpos, ypos,   0.0f, 0.0f }, // Top-left
+			{ xpos + w, ypos, 1.0f, 0.0f },  // Top-right      
+			{ xpos, ypos + h, 0.0f, 1.0f }, // Bottom-left
+			{ xpos + w, ypos + h, 1.0f, 1.0f }, // Bottom-right
+		};
+		if (game.player_type == BlueHamster) {
+			glBindTexture(GL_TEXTURE_2D, red_hamster_UI);
+		}
+		else {
+			glBindTexture(GL_TEXTURE_2D, blue_hamster_UI);
+		}
+
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_top), vertices_top); 
+
+		glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 1.0f, 1.0f);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	}
-	else {
-		glBindTexture(GL_TEXTURE_2D, blue_hamster_UI);
-	}
-	GL_ERRORS();
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_top), vertices_top); 
-	GL_ERRORS();
-	glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 1.0f, 1.0f);
-	GL_ERRORS();
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	GL_ERRORS();
+
 	glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_BLEND);
 	glUseProgram(0);
 
+	GL_ERRORS();
+}
+
+void PlayMode::draw_start_menu(glm::uvec2 const &drawable_size)
+{	
+	if (game.player_type == PlayerType::RedHamster) {
+		glClearColor(0.5255f, 0.1843f, 0.20392f, 1.0f);
+	}
+	else if (game.player_type == PlayerType::BlueHamster) {
+		glClearColor(0.15294f, 0.2902f, 0.651f, 1.0f);
+	}
+	else {
+		glClearColor(1.0f, 0.753f, 0.1216f, 1.0f);
+	}
+	glClearDepth(1.0f); //1.0 is actually the default value to clear the depth buffer to, but FYI you can change it.
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	if (game.player_type == PlayerType::Spectator) {
+		RenderText("Press 'E' to get ready!", 250, 70, 1.0f, glm::vec3(0.3f, 0.3f, 0.3f), drawable_size);
+	}
+	else {
+		RenderText("Ready!", 400, 70, 1.0f, glm::vec3(0.8f, 0.8f, 0.8f), drawable_size);
+	}
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+
+	glEnable(GL_FRAMEBUFFER_SRGB);
+	unsigned int VAO, VBO;
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glBindVertexArray(VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 4 * 4, NULL, GL_DYNAMIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+    // activate corresponding render state	
+	glUseProgram(ui_render_program->program);
+	float aspect = float(drawable_size.y) / float(drawable_size.x);
+	glm::mat4 projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1920.0f * aspect);
+	// main menu is 1920 * 1080
+	glUniformMatrix4fv(ui_render_program->PROJECTION_mat4,  1, GL_FALSE, glm::value_ptr(projection));
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(VAO);
+	const float canvas_w = 1920.0f;
+	const float canvas_h = 1920.0f * aspect;
+	constexpr float image_aspect = 1080.0f / 1920.0f;
+	float w = 1920.0f;
+	float h = 1080.0f;
+	float offset_x = 0.0f;
+	float offset_y = 0.0f;
+	if (canvas_h < 1080.0f) {
+		h = canvas_h;
+		w = canvas_h / image_aspect;
+		offset_x = (canvas_w - w) / 2.0f;
+	}
+	else if (canvas_h > 1080.0f) {
+		w = canvas_w;
+		h = canvas_w * image_aspect;
+		offset_y = (canvas_h - h) / 2.0f;
+	}
+
+	float vertices_bottom[4][4] = {
+		{ offset_x, offset_y,   0.0f, 0.0f }, // Top-left
+		{ offset_x + w, offset_y, 1.0f, 0.0f },  // Top-right      
+		{ offset_x, offset_y + h, 0.0f, 1.0f }, // Bottom-left
+		{ offset_x + w, offset_y + h, 1.0f, 1.0f }, // Bottom-right
+	};
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices_bottom), vertices_bottom); 
+	glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 1.0f, 1.0f);
+
+	glBindTexture(GL_TEXTURE_2D, main_menu);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_BLEND);
+	glUseProgram(0);
+
+	GL_ERRORS();
+}
+
+
+void PlayMode::RenderText(std::string text, float x, float y, float scale, glm::vec3 color, glm::uvec2 const &drawable_size)
+{
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	unsigned int VAO, VBO;
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glBindVertexArray(VAO);
+	GL_ERRORS();
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+    // activate corresponding render state	
+	GL_ERRORS();
+	glUseProgram(font_render_program->program);
+	float aspect = float(drawable_size.y) / float(drawable_size.x);
+	glm::mat4 projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1920.0f * aspect);
+	glUniformMatrix4fv(font_render_program->PROJECTION_mat4,  1, GL_FALSE, glm::value_ptr(projection));
+
+    glUniform3f(font_render_program->TexColor_vec3, color.x, color.y, color.z);
+	GL_ERRORS();
+    glActiveTexture(GL_TEXTURE0);
+	GL_ERRORS();
+    glBindVertexArray(VAO);
+	GL_ERRORS();
+    // iterate through all characters
+    std::string::const_iterator c;
+    for (c = text.begin(); c != text.end(); c++)
+    {
+		char character = *c;
+        Font::Character ch = font->characters.find(character)->second;
+
+        float xpos = x + ch.Bearing.x * scale;
+        float ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+
+        float w = ch.Size.x * scale;
+        float h = ch.Size.y * scale;
+        // update VBO for each character
+        float vertices[6][4] = {
+            { xpos,     ypos + h,   0.0f, 0.0f },            
+            { xpos,     ypos,       0.0f, 1.0f },
+            { xpos + w, ypos,       1.0f, 1.0f },
+
+            { xpos,     ypos + h,   0.0f, 0.0f },
+            { xpos + w, ypos,       1.0f, 1.0f },
+            { xpos + w, ypos + h,   1.0f, 0.0f }           
+        };
+        // render glyph texture over quad
+        glBindTexture(GL_TEXTURE_2D, ch.TextureID);
+        // update content of VBO memory
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); 
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        // render quad
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+        x += (ch.Advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64)
+    }
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_BLEND);
+	glUseProgram(0);
 	GL_ERRORS();
 }

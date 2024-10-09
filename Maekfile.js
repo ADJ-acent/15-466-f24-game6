@@ -133,10 +133,12 @@ const client_names = [
 	maek.CPP('PlayMode.cpp'),
 	maek.CPP('LitColorTextureProgram.cpp'),
 	maek.CPP('UIRenderProgram.cpp'),
+	maek.CPP('FontRenderProgram.cpp'),
 	//maek.CPP('ColorTextureProgram.cpp'),  //not used right now, but you might want it
 	maek.CPP('Sound.cpp'),
 	maek.CPP('load_wav.cpp'),
-	maek.CPP('load_opus.cpp')
+	maek.CPP('load_opus.cpp'),
+	maek.CPP('Font.cpp')
 ];
 
 const server_names = [

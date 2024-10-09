@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
 					//client connected:
 
 					//create some player info for them:
-					connection_to_player.emplace(c, game.spawn_player());
+					connection_to_player.emplace(c, nullptr);
 
 				} else if (evt == Connection::OnClose) {
 					//client disconnected:
@@ -86,15 +86,28 @@ int main(int argc, char **argv) {
 					//look up in players list:
 					auto f = connection_to_player.find(c);
 					assert(f != connection_to_player.end());
-					if (f->second == nullptr) return;
-					Player &player = *f->second;
+
 
 					//handle messages from client:
 					try {
 						bool handled_message;
 						do {
 							handled_message = false;
+							if (f->second == nullptr && game.game_state == Game::GameState::WaitingForPlayer) {
+								if (game.recv_handshake_message(c)) {
+									f->second = game.spawn_player();
+									if (game.player_ready[0] && game.player_ready[1]) {
+										game.game_state = Game::GameState::InGame;
+									}
+									handled_message = true;
+								}
+								else {
+									return; // should not accept other types of messages as spectator
+								}
+							}
+							Player &player = *f->second;
 							if (player.controls.recv_controls_message(c)) handled_message = true;
+							
 							//TODO: extend for more message types as needed
 						} while (handled_message);
 					} catch (std::exception const &e) {

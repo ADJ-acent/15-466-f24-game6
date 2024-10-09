@@ -21,6 +21,10 @@ struct PlayMode : Mode {
 	//ui rendering
 	void draw_ui(glm::uvec2 const &drawable_size);
 
+	void draw_start_menu(glm::uvec2 const &drawable_size);
+
+	void RenderText(std::string text, float x, float y, float scale, glm::vec3 color, glm::uvec2 const &drawable_size);
+
 	//----- game state -----
 
 	//handle new game state passed from server

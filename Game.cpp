@@ -109,6 +109,7 @@ Game::Game() {
 Player *Game::spawn_player() {
 	if (next_player_number < 2) {
 		player_ready[next_player_number] = true;
+		std::cout<< "Player "<<std::to_string(next_player_number)<< " Ready!\n";
 		return &players[next_player_number++];
 	}
 	else if (!player_ready[0]) {
@@ -139,6 +140,7 @@ void Game::remove_player(Player *player) {
 }
 
 void Game::update(float elapsed) {
+	if (game_state == GameState::Ended) return;
 	// cache last hamster position for collision check
 	glm::vec3 hamster_last_pos[2] = {players[0].position, players[1].position};
 	glm::vec3 lance_last_pos[2] = {
@@ -360,6 +362,11 @@ void Game::update(float elapsed) {
 		p.controls.LMB.downs = 0;
 		p.controls.mouse_x = 0.0f;
 
+		if (players[1].health <= 0 || players[0].health <= 0) {
+			assert(game_state == GameState::InGame);
+			game_state = GameState::Ended;
+		}
+
 	}
 
 	//collision note: hamster is roughly a sphere with .9 radius, chair has roughly 1.1 radius
@@ -418,6 +425,7 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 
 	//number of ready players
 	connection.send(player_ready);
+	connection.send(game_state);
 	// whether this player is red or blue hamster
 	if (connection_player != nullptr) {
 		connection.send(static_cast<PlayerType>(connection_player != &players[0]));
@@ -489,6 +497,40 @@ void Game::reset_hamsters()
 	players[1] = initial_player_state[1];
 }
 
+void Game::send_handshake_message(Connection *connection_) const
+{
+	if (game_state != WaitingForPlayer) return;
+	if (player_type != Spectator) return;
+	assert(connection_);
+	auto &connection = *connection_;
+	connection.send(uint8_t(Message::C2S_Handshake));
+	connection.send(uint8_t(1));
+	connection.send(true);
+}
+
+bool Game::recv_handshake_message(Connection *connection_)
+{
+	if (game_state != WaitingForPlayer) return false;
+	assert(connection_);
+	auto &connection = *connection_;
+
+	auto &recv_buffer = connection.recv_buffer;
+
+	//expecting [type, 1, true]:
+	if (recv_buffer.size() < 3) return false;
+	std::cout<<recv_buffer[0]<<std::endl;
+	if (recv_buffer[0] != uint8_t(Message::C2S_Handshake)) return false;
+	std::cout<<"handshake 3\n"<<std::endl;
+	if (uint32_t(recv_buffer[1]) != 1 || !bool(recv_buffer[2])) throw std::runtime_error("Handshake message not in expected format!");
+
+	//clear the entire buffer
+	recv_buffer.erase(recv_buffer.begin(), recv_buffer.end());
+	std::cout<<"success on handshake\n"<<std::endl;
+
+	return true;
+}
+
+
 // for moving sphere (hamster) and point (lance)
 // from https://gamedev.stackexchange.com/questions/313/what-is-a-good-algorithm-to-detect-collision-between-moving-spheres#:~:text=If%20each%20object%20has%20a%20position
 bool Game::sphere_point_intersection(const glm::vec3 &sphere_position, float sphere_radius, const glm::vec3 &point_position, const glm::vec3 &sphere_velocity, const glm::vec3 &point_velocity, const float elapsed)
@@ -547,6 +589,7 @@ bool Game::recv_state_message(Connection *connection_)
 	};
 
 	read(&player_ready);
+	read(&game_state);
 	read(&player_type);
 	for (uint8_t i = 0; i < 2; ++i) {
 		Player &player = players[i];

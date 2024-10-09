@@ -90,11 +90,16 @@ struct Game {
 	uint8_t next_player_number = 0; //used for keeping track of who is in the game and who is spectating
 	bool player_ready[2] = {false, false};
 
-	enum GameState {
+	enum GameState : uint8_t {
 		WaitingForPlayer,
 		InGame,
+		LostConnection,
 		Ended,
 	} game_state = GameState::WaitingForPlayer;
+
+	void send_handshake_message(Connection *connection) const;
+
+	bool recv_handshake_message(Connection *connection);
 
 	Game();
 
