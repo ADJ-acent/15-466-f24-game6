@@ -155,6 +155,7 @@ void Game::update(float elapsed) {
 			p.since_attack += elapsed;
 			if (p.since_attack > 1.0f) {
 				p.since_attack = 0.0f;
+				p.has_hit_this_attack = false;
 			}
 			else {
 				float res = p.since_attack / 0.1f;
@@ -331,21 +332,22 @@ void Game::update(float elapsed) {
 			glm::vec3(lance_tip_transform[1]->make_local_to_world() * glm::vec4(lance_tip_transform[1]->position, 1.0f))
 		};
 		glm::vec3 blue_lance_direction = lance_cur_pos[1] - lance_last_pos[1];
-		if (players[1].since_attack != 0.0f && sphere_point_intersection(players[0].position, .95f, 
+		if (players[1].since_attack != 0.0f && !players[1].has_hit_this_attack && sphere_point_intersection(players[0].position, PlayerRadius, 
 			lance_cur_pos[1], players[0].position - hamster_last_pos[0], blue_lance_direction, elapsed)) {
-			
 			//player 0 got hit
 			players[0].velocity += blue_lance_direction * 3.0f;
-			players[0].health -= 2;
+			p.has_hit_this_attack = true;
+			players[0].health -= 1;
 			//bonus if the timing of the jab is good
 			if (players[1].since_attack > 0.25f && players[1].since_attack < 0.7f) players[0].health -= 1;
 		}
 		glm::vec3 red_lance_direction = lance_cur_pos[0] - lance_last_pos[0];
-		if (players[0].since_attack != 0.0f && sphere_point_intersection(players[1].position, .95f, 
+		if (players[0].since_attack != 0.0f && !players[0].has_hit_this_attack && sphere_point_intersection(players[1].position, PlayerRadius, 
 			lance_cur_pos[0], players[1].position - hamster_last_pos[1], red_lance_direction, elapsed)) {
 			players[1].velocity += red_lance_direction * 3.0f;
+			p.has_hit_this_attack = true;
 			//player 1 got hit
-			players[1].health -= 2;
+			players[1].health -= 1;
 			//bonus if the timing of the jab is good
 			if (players[0].since_attack > 0.25f && players[0].since_attack < 0.7f) players[1].health -= 1;
 		}
@@ -440,17 +442,17 @@ void Game::reset_hamsters()
 	if (!initialized) {
 		Player &red_hamster = initial_player_state[0];
 		red_hamster.dead = false;
-		red_hamster.health = 10;
+		red_hamster.health = max_health;
 		red_hamster.velocity = glm::vec3(0.0f);
 		red_hamster.since_attack = 0.0f;
-		red_hamster.position = {1.0f, -22.0f, 1.8477f};
+		red_hamster.position = {1.0f, -22.0f, 2.35f};
 
 		Player &blue_hamster = initial_player_state[1];
 		blue_hamster.dead = false;
-		blue_hamster.health = 10;
+		blue_hamster.health = max_health;
 		blue_hamster.velocity = glm::vec3(0.0f);
 		blue_hamster.since_attack = 0.0f;
-		blue_hamster.position = {1.0f, 22.0f, 1.8477f};
+		blue_hamster.position = {1.0f, 22.0f, 2.35f};
 
 		for (auto &transform : main_scene_server.transforms) {
 

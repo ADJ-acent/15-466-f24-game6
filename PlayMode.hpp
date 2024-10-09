@@ -18,6 +18,9 @@ struct PlayMode : Mode {
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
 
+	//ui rendering
+	void draw_ui(glm::uvec2 const &drawable_size);
+
 	//----- game state -----
 
 	//handle new game state passed from server

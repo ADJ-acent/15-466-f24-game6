@@ -54,7 +54,8 @@ struct Player {
 
 	//player state (sent from server):
 	bool dead = false;
-	int8_t health = 10;
+	bool has_hit_this_attack = false;
+	int8_t health = 25;
 	float since_attack = 0.0f;
 	glm::quat rotation = glm::quat();
 	glm::quat lance_rotation = glm::quat();
@@ -80,6 +81,8 @@ struct Game {
 	PlayerType player_type = Spectator;
 
 	Hamster hamster_red, hamster_blue;
+
+	uint8_t max_health = 25;
 
 	Player *spawn_player(); //add player the end of the players list (may also, e.g., play some spawn anim)
 	void remove_player(Player *); //remove player from game (may also, e.g., play some despawn anim)
