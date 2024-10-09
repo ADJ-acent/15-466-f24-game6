@@ -68,10 +68,18 @@ struct Player {
 	Player() = default;
 };
 
+struct Hamster {
+	Scene::Transform *hamster_transform;
+	Scene::Transform *lance_transform;
+	Scene::Transform *wheel_transform;
+};
+
 struct Game {
 	std::array< Player, 2 > players; //two hamsters
 	std::array< Player, 2 > initial_player_state;
 	PlayerType player_type = Spectator;
+
+	Hamster hamster_red, hamster_blue;
 
 	Player *spawn_player(); //add player the end of the players list (may also, e.g., play some spawn anim)
 	void remove_player(Player *); //remove player from game (may also, e.g., play some despawn anim)
@@ -110,6 +118,15 @@ struct Game {
 
 	//---- game state helpers ----
 	void reset_hamsters();
+
+	bool sphere_point_intersection(
+		const glm::vec3& sphere_position, 
+		float sphere_radius,
+		const glm::vec3& point_position, 
+		const glm::vec3& sphere_velocity,
+		const glm::vec3& point_velocity,
+		const float elapsed
+	);
 
 	//---- communication helpers ----
 

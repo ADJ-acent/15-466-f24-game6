@@ -101,14 +101,12 @@ PlayMode::PlayMode(Client &client_) : client(client_) {
 		}
 		else if (transform.name == "BlueWheel") {
 			hamster_blue.wheel_transform = &transform;
-			std::cout<<"blue wheel: "<<transform.scale.x<<", "<<transform.scale.y<<", "<<transform.scale.z<<"\n ";
 		}
 		else if (transform.name == "RedLance") {
 			hamster_red.lance_transform = &transform;
 		}
 		else if (transform.name == "RedWheel") {
 			hamster_red.wheel_transform = &transform;
-			std::cout<<"red wheel: "<<transform.scale.x<<", "<<transform.scale.y<<", "<<transform.scale.z<<"\n ";
 		}
 	}
 	auto camera_it = scene.cameras.begin();

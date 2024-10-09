@@ -39,11 +39,7 @@ struct PlayMode : Mode {
 	std::string server_message;
 
 	//hamsters
-	struct Hamster {
-		Scene::Transform *hamster_transform;
-		Scene::Transform *lance_transform;
-		Scene::Transform *wheel_transform;
-	} hamster_red, hamster_blue;
+	Hamster hamster_red, hamster_blue;
 
 	//connection to server:
 	Client &client;

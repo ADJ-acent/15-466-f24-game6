@@ -83,6 +83,26 @@ bool Player::Controls::recv_controls_message(Connection *connection_) {
 
 Game::Game() {
 	main_scene_server = Scene(data_path("arena.scene"), nullptr);
+	for (auto &transform : main_scene_server.transforms) {
+		if (transform.name == "RedHamster") {
+			hamster_red.hamster_transform = &transform;
+		}
+		else if (transform.name == "BlueHamster") {
+			hamster_blue.hamster_transform = &transform;
+		}
+		else if (transform.name == "BlueLance") {
+			hamster_blue.lance_transform = &transform;
+		}
+		else if (transform.name == "BlueWheel") {
+			hamster_blue.wheel_transform = &transform;
+		}
+		else if (transform.name == "RedLance") {
+			hamster_red.lance_transform = &transform;
+		}
+		else if (transform.name == "RedWheel") {
+			hamster_red.wheel_transform = &transform;
+		}
+	}
 	reset_hamsters();
 }
 
@@ -119,8 +139,12 @@ void Game::remove_player(Player *player) {
 }
 
 void Game::update(float elapsed) {
-	// cache last hamster position
+	// cache last hamster position for collision check
 	glm::vec3 hamster_last_pos[2] = {players[0].position, players[1].position};
+	glm::vec3 lance_last_pos[2] = {
+		glm::vec3(lance_tip_transform[0]->make_local_to_world() * glm::vec4(lance_tip_transform[0]->position, 1.0f)), 
+		glm::vec3(lance_tip_transform[1]->make_local_to_world() * glm::vec4(lance_tip_transform[1]->position, 1.0f)), 
+	};
 	//position/velocity update:
 	for (uint8_t i = 0; i<2; ++i) {
 		auto &p = players[i];
@@ -288,6 +312,43 @@ void Game::update(float elapsed) {
 			p.position.y = ArenaMax.y - PlayerRadius;
 			p.velocity.y =-std::abs(p.velocity.y) * 0.5f;
 		}
+
+		//update local scene tree for collision checks
+		hamster_red.hamster_transform->position = players[0].position;
+		hamster_red.hamster_transform->rotation = players[0].rotation;
+		hamster_red.wheel_transform->rotation = players[0].wheel_rotation;
+		hamster_red.lance_transform->rotation = players[0].lance_rotation;
+		hamster_red.lance_transform->position = players[0].lance_position;
+
+		hamster_blue.hamster_transform->position = players[1].position;
+		hamster_blue.hamster_transform->rotation = players[1].rotation;
+		hamster_blue.wheel_transform->rotation = players[1].wheel_rotation;
+		hamster_blue.lance_transform->rotation = players[1].lance_rotation;
+		hamster_blue.lance_transform->position = players[1].lance_position;
+		
+		glm::vec3 lance_cur_pos[2] = {
+			glm::vec3(lance_tip_transform[0]->make_local_to_world() * glm::vec4(lance_tip_transform[0]->position, 1.0f)), 
+			glm::vec3(lance_tip_transform[1]->make_local_to_world() * glm::vec4(lance_tip_transform[1]->position, 1.0f))
+		};
+		glm::vec3 blue_lance_direction = lance_cur_pos[1] - lance_last_pos[1];
+		if (players[1].since_attack != 0.0f && sphere_point_intersection(players[0].position, .95f, 
+			lance_cur_pos[1], players[0].position - hamster_last_pos[0], blue_lance_direction, elapsed)) {
+			
+			//player 0 got hit
+			players[0].velocity += blue_lance_direction * 3.0f;
+			players[0].health -= 2;
+			//bonus if the timing of the jab is good
+			if (players[1].since_attack > 0.25f && players[1].since_attack < 0.7f) players[0].health -= 1;
+		}
+		glm::vec3 red_lance_direction = lance_cur_pos[0] - lance_last_pos[0];
+		if (players[0].since_attack != 0.0f && sphere_point_intersection(players[1].position, .95f, 
+			lance_cur_pos[0], players[1].position - hamster_last_pos[1], red_lance_direction, elapsed)) {
+			players[1].velocity += red_lance_direction * 3.0f;
+			//player 1 got hit
+			players[1].health -= 2;
+			//bonus if the timing of the jab is good
+			if (players[0].since_attack > 0.25f && players[0].since_attack < 0.7f) players[1].health -= 1;
+		}
 		//reset 'downs' since controls have been handled:
 		p.controls.left.downs = 0;
 		p.controls.right.downs = 0;
@@ -426,15 +487,37 @@ void Game::reset_hamsters()
 	players[1] = initial_player_state[1];
 }
 
-bool Game::sphere_point_intersection(const glm::vec3 &sphere_position, float sphere_radius, const glm::vec3 &point_position, const glm::vec3 &sphere_velocity, const glm::vec3 &point_velocity)
+// for moving sphere (hamster) and point (lance)
+// from https://gamedev.stackexchange.com/questions/313/what-is-a-good-algorithm-to-detect-collision-between-moving-spheres#:~:text=If%20each%20object%20has%20a%20position
+bool Game::sphere_point_intersection(const glm::vec3 &sphere_position, float sphere_radius, const glm::vec3 &point_position, const glm::vec3 &sphere_velocity, const glm::vec3 &point_velocity, const float elapsed)
 {
 	glm::vec3 relative_velocity = point_velocity - sphere_velocity;
 	glm::vec3 relative_position = point_position - sphere_position;
 
-	// Using distance2 for efficiency (avoids square root)
-	float distance_squared = glm::distance2(relative_position, glm::vec3(0.0f)); 
+	float start_distance_square = glm::length2(relative_position);
+	float target_distance_square = sphere_radius * sphere_radius;
 
-	return distance_squared <= sphere_radius * sphere_radius;
+	// if already colliding return
+	if (start_distance_square <= target_distance_square) return true;
+
+	float relative_dot = glm::dot(relative_position, relative_velocity);
+	float relative_velocity_square = glm::length2(relative_velocity);
+
+	// skip if moving opposite direction or parallel direction
+	if (relative_dot > 0.0f || relative_velocity_square == 0.0f) {
+		return false;
+	}
+
+	float min_distance_t = -relative_dot / relative_velocity_square;
+	float min_distance_squared = glm::length2(relative_position + relative_velocity * min_distance_t);
+	if (min_distance_squared > target_distance_square) return false;
+
+	float collide_dist_to_min_square = target_distance_square - min_distance_squared;
+	float collide_t = sqrt(collide_dist_to_min_square / relative_velocity_square);
+	glm::vec3 collision_position = relative_position + relative_velocity * collide_t;
+    float collision_distance_squared = glm::length2(collision_position);
+    if (collision_distance_squared > target_distance_square) return false; 
+	return collide_t <= elapsed;
 }
 
 bool Game::recv_state_message(Connection *connection_)
