@@ -132,6 +132,7 @@ void Game::remove_player(Player *player) {
 		Player * cur_player = &players[i];
 		if (cur_player == player) {
 			player_ready[i] = false;
+			game_state = GameState::Ended; // end the game
 			found = true;
 			break;
 		}

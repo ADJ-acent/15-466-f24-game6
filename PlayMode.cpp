@@ -446,8 +446,11 @@ void PlayMode::draw_ui(glm::uvec2 const &drawable_size)
 				RenderText("Blue Hamster Wins!", 650.0f, 600.f, 1.5f, glm::vec3(0.0f, 0.3f, 0.3f), drawable_size);
 			}
 		}
-		else {
+		else if (game.players[1].health <= 0) {
 			RenderText("Red Hamster Wins!", 675.0f, 600.f, 1.5f, glm::vec3(.7f, 0.05f, 0.05f), drawable_size);
+		}
+		else { // player disconnected and got removed
+			RenderText("A player has disconnected...", 575.0f, 600.f, 1.5f, glm::vec3(.7f, 0.1f, 0.0f), drawable_size);
 		}
 		RenderText("going back to the main menu in 5 seconds...", 500.0f, 500.f, 1.0f, glm::vec3(.7f, .7f, .7f), drawable_size);
 	}
