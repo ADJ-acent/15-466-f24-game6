@@ -18,6 +18,8 @@ How To Play:
 Press 'E' to ready.
 Press 'WASD' to move.
 Hold 'Space' to adjust lance angle.
+Press 'LMB' to attack.
+Move Mouse to look around.
 Reduce your opponent's health to 0 to win!
 
 Sources:
