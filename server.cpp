@@ -120,7 +120,13 @@ int main(int argc, char **argv) {
 		}
 
 		//update current game state
+		Game::GameState before = game.game_state;
 		game.update(Game::Tick);
+		if (before == Game::GameState::Ended && game.game_state == Game::GameState::WaitingForPlayer) {
+			for (auto &[c, player] : connection_to_player) {
+				if (player != nullptr) player = nullptr;
+			}
+		}
 
 		//send updated game state to all clients
 		for (auto &[c, player] : connection_to_player) {

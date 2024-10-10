@@ -140,7 +140,13 @@ void Game::remove_player(Player *player) {
 }
 
 void Game::update(float elapsed) {
-	if (game_state == GameState::Ended) return;
+	if (game_state == GameState::Ended) {
+		since_ended += elapsed;
+		if (since_ended > 5.0f) {
+			reset_game();
+		}
+		return;
+	}
 	// cache last hamster position for collision check
 	glm::vec3 hamster_last_pos[2] = {players[0].position, players[1].position};
 	glm::vec3 lance_last_pos[2] = {
@@ -316,43 +322,6 @@ void Game::update(float elapsed) {
 			p.velocity.y =-std::abs(p.velocity.y) * 0.5f;
 		}
 
-		//update local scene tree for collision checks
-		hamster_red.hamster_transform->position = players[0].position;
-		hamster_red.hamster_transform->rotation = players[0].rotation;
-		hamster_red.wheel_transform->rotation = players[0].wheel_rotation;
-		hamster_red.lance_transform->rotation = players[0].lance_rotation;
-		hamster_red.lance_transform->position = players[0].lance_position;
-
-		hamster_blue.hamster_transform->position = players[1].position;
-		hamster_blue.hamster_transform->rotation = players[1].rotation;
-		hamster_blue.wheel_transform->rotation = players[1].wheel_rotation;
-		hamster_blue.lance_transform->rotation = players[1].lance_rotation;
-		hamster_blue.lance_transform->position = players[1].lance_position;
-		
-		glm::vec3 lance_cur_pos[2] = {
-			glm::vec3(lance_tip_transform[0]->make_local_to_world() * glm::vec4(lance_tip_transform[0]->position, 1.0f)), 
-			glm::vec3(lance_tip_transform[1]->make_local_to_world() * glm::vec4(lance_tip_transform[1]->position, 1.0f))
-		};
-		glm::vec3 blue_lance_direction = lance_cur_pos[1] - lance_last_pos[1];
-		if (players[1].since_attack != 0.0f && !players[1].has_hit_this_attack && sphere_point_intersection(players[0].position, PlayerRadius, 
-			lance_cur_pos[1], players[0].position - hamster_last_pos[0], blue_lance_direction, elapsed)) {
-			//player 0 got hit
-			players[0].velocity += blue_lance_direction * 3.0f;
-			p.has_hit_this_attack = true;
-			players[0].health -= 1;
-			//bonus if the timing of the jab is good
-			if (players[1].since_attack > 0.25f && players[1].since_attack < 0.7f) players[0].health -= 1;
-		}
-		glm::vec3 red_lance_direction = lance_cur_pos[0] - lance_last_pos[0];
-		if (players[0].since_attack != 0.0f && !players[0].has_hit_this_attack && sphere_point_intersection(players[1].position, PlayerRadius, 
-			lance_cur_pos[0], players[1].position - hamster_last_pos[1], red_lance_direction, elapsed)) {
-			players[1].velocity += red_lance_direction * 3.0f;
-			p.has_hit_this_attack = true;
-			//player 1 got hit
-			players[1].health -= 1;
-			//bonus if the timing of the jab is good
-			if (players[0].since_attack > 0.25f && players[0].since_attack < 0.7f) players[1].health -= 1;
-		}
 		//reset 'downs' since controls have been handled:
 		p.controls.left.downs = 0;
 		p.controls.right.downs = 0;
@@ -362,15 +331,20 @@ void Game::update(float elapsed) {
 		p.controls.LMB.downs = 0;
 		p.controls.mouse_x = 0.0f;
 
-		if (players[1].health <= 0 || players[0].health <= 0) {
-			assert(game_state == GameState::InGame);
-			game_state = GameState::Ended;
-		}
-
 	}
+	//update local scene tree for collision checks
+	hamster_red.hamster_transform->position = players[0].position;
+	hamster_red.hamster_transform->rotation = players[0].rotation;
+	hamster_red.wheel_transform->rotation = players[0].wheel_rotation;
+	hamster_red.lance_transform->rotation = players[0].lance_rotation;
+	hamster_red.lance_transform->position = players[0].lance_position;
 
-	//collision note: hamster is roughly a sphere with .9 radius, chair has roughly 1.1 radius
-
+	hamster_blue.hamster_transform->position = players[1].position;
+	hamster_blue.hamster_transform->rotation = players[1].rotation;
+	hamster_blue.wheel_transform->rotation = players[1].wheel_rotation;
+	hamster_blue.lance_transform->rotation = players[1].lance_rotation;
+	hamster_blue.lance_transform->position = players[1].lance_position;
+	
 	// player on player collision resolution:
 	for (auto &p1 : players) {
 		//player/player collisions:
@@ -387,6 +361,39 @@ void Game::update(float elapsed) {
 			p2.velocity += 0.5f * delta_v12;
 			p1.velocity -= 0.5f * delta_v12;
 		}
+	}
+
+	glm::vec3 lance_cur_pos[2] = {
+		glm::vec3(lance_tip_transform[0]->make_local_to_world() * glm::vec4(lance_tip_transform[0]->position, 1.0f)), 
+		glm::vec3(lance_tip_transform[1]->make_local_to_world() * glm::vec4(lance_tip_transform[1]->position, 1.0f))
+	};
+	glm::vec3 blue_lance_direction = lance_cur_pos[1] - lance_last_pos[1];
+	if (players[1].since_attack != 0.0f && !players[1].has_hit_this_attack && sphere_point_intersection(players[0].position, PlayerRadius, 
+		lance_cur_pos[1], players[0].position - hamster_last_pos[0], blue_lance_direction, elapsed)) {
+		//player 0 got hit
+		players[1].has_hit_this_attack = true;
+		players[0].velocity += blue_lance_direction * 3.0f;
+		players[0].health -= 1;
+		std::cout<<"hit 1: "<<int(players[0].health)<<std::endl;
+		//bonus if the timing of the jab is good
+		if (players[1].since_attack > 0.25f && players[1].since_attack < 0.7f) players[0].health -= 1;
+	}
+	glm::vec3 red_lance_direction = lance_cur_pos[0] - lance_last_pos[0];
+	if (players[0].since_attack != 0.0f && !players[0].has_hit_this_attack && sphere_point_intersection(players[1].position, PlayerRadius, 
+		lance_cur_pos[0], players[1].position - hamster_last_pos[1], red_lance_direction, elapsed)) {
+		//player 1 got hit
+		players[0].has_hit_this_attack = true;
+		players[1].velocity += red_lance_direction * 3.0f;
+		players[1].health -= 1;
+		std::cout<<"hit 2: "<<int(players[1].health)<<std::endl;
+		//bonus if the timing of the jab is good
+		if (players[0].since_attack > 0.25f && players[0].since_attack < 0.7f) players[1].health -= 1;
+	}
+
+
+	if (players[1].health <= 0 || players[0].health <= 0) {
+			assert(game_state == GameState::InGame);
+			game_state = GameState::Ended;
 	}
 }
 
@@ -450,6 +457,7 @@ void Game::reset_hamsters()
 	if (!initialized) {
 		Player &red_hamster = initial_player_state[0];
 		red_hamster.dead = false;
+		red_hamster.has_hit_this_attack = false;
 		red_hamster.health = max_health;
 		red_hamster.velocity = glm::vec3(0.0f);
 		red_hamster.since_attack = 0.0f;
@@ -457,6 +465,7 @@ void Game::reset_hamsters()
 
 		Player &blue_hamster = initial_player_state[1];
 		blue_hamster.dead = false;
+		blue_hamster.has_hit_this_attack = false;
 		blue_hamster.health = max_health;
 		blue_hamster.velocity = glm::vec3(0.0f);
 		blue_hamster.since_attack = 0.0f;
@@ -495,6 +504,27 @@ void Game::reset_hamsters()
 	}
 	players[0] = initial_player_state[0];
 	players[1] = initial_player_state[1];
+}
+
+void Game::reset_game()
+{
+	reset_hamsters();
+	hamster_red.hamster_transform->position = players[0].position;
+	hamster_red.hamster_transform->rotation = players[0].rotation;
+	hamster_red.lance_transform->rotation = players[0].lance_rotation;
+	hamster_red.lance_transform->position =  players[0].lance_position;
+	hamster_red.wheel_transform->rotation = players[0].wheel_rotation;
+
+	hamster_blue.hamster_transform->position = players[1].position;
+	hamster_blue.hamster_transform->rotation = players[1].rotation;
+	hamster_blue.lance_transform->rotation = players[1].lance_rotation;
+	hamster_blue.lance_transform->position =  players[1].lance_position;
+	hamster_blue.wheel_transform->rotation = players[1].wheel_rotation;
+	game_state = GameState::WaitingForPlayer;
+	since_ended = 0.0f;
+	player_ready[0] = false;
+	player_ready[1] = false;
+	next_player_number = 0;
 }
 
 void Game::send_handshake_message(Connection *connection_) const

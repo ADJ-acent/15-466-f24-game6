@@ -82,6 +82,8 @@ struct Game {
 
 	Hamster hamster_red, hamster_blue;
 
+	float since_ended = 0.0f;
+
 	uint8_t max_health = 25;
 
 	Player *spawn_player(); //add player the end of the players list (may also, e.g., play some spawn anim)
@@ -126,6 +128,7 @@ struct Game {
 
 	//---- game state helpers ----
 	void reset_hamsters();
+	void reset_game();
 
 	bool sphere_point_intersection(
 		const glm::vec3& sphere_position, 

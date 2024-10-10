@@ -333,21 +333,21 @@ void PlayMode::draw_ui(glm::uvec2 const &drawable_size)
 
 
 	assert(game.game_state != Game::WaitingForPlayer);
-	if (game.game_state == Game::InGame){
+	{ // Health bar rendering... Its so bad don't look
 		const float health_size = 256.0f;
 		float xpos = health_size / 8.0f;
 		float ypos = - health_size / 4.0f;
 		float w = health_size;
 		float h = health_size;
-		float red_health = std::clamp(float(game.players[0].health) / 25.0f, 0.0f, 0.75f);
-		float blue_health = std::clamp(float(game.players[1].health) / 25.0f, 0.0f, 0.75f);
+		float red_health = float(game.players[0].health) / 25.0f*0.65f;
+		float blue_health = float(game.players[1].health) / 25.0f* 0.65f;
 		if (game.player_type == BlueHamster) {
 			glUniform3f(ui_render_program->TexColor_vec3, 0.3f, 0.5f, 0.9f);
-			w = 0.25f * w + blue_health * w;
+			w = 0.35f * w + blue_health * w;
 		}
 		else {
 			glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 0.3f, 0.3f);
-			w = 0.25f * w + red_health * w;
+			w = 0.35f * w + red_health * w;
 		}
 		float vertices_health_bottom[4][4] = {
 			{ xpos, ypos,   0.0f, 0.0f }, // Top-left
@@ -389,11 +389,11 @@ void PlayMode::draw_ui(glm::uvec2 const &drawable_size)
 
 		if (game.player_type == BlueHamster) {
 			glUniform3f(ui_render_program->TexColor_vec3, 1.0f, 0.3f, 0.3f);
-			w = 0.25f * w + red_health * w;
+			w = 0.35f * w + red_health * w;
 		}
 		else {
 			glUniform3f(ui_render_program->TexColor_vec3, 0.3f, 0.5f, 0.9f);
-			w = 0.25f * w + blue_health * w;
+			w = 0.35f * w + blue_health * w;
 		}
 		float vertices_health_top [4][4] = {
 			{ xpos, ypos,   0.0f, 0.0f }, // Top-left
@@ -436,7 +436,22 @@ void PlayMode::draw_ui(glm::uvec2 const &drawable_size)
     glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_BLEND);
 	glUseProgram(0);
-
+	
+	if (game.game_state == Game::Ended) {
+		if (game.players[0].health <= 0) {
+			if (game.players[1].health <= 0) {
+				RenderText("Tied?!?!", 900.0f, 500.f, 1.5f, glm::vec3(1.0f, 1.0f, 1.0f), drawable_size);
+			}
+			else {
+				RenderText("Blue Hamster Wins!", 650.0f, 600.f, 1.5f, glm::vec3(0.0f, 0.3f, 0.3f), drawable_size);
+			}
+		}
+		else {
+			RenderText("Red Hamster Wins!", 675.0f, 600.f, 1.5f, glm::vec3(.7f, 0.05f, 0.05f), drawable_size);
+		}
+		RenderText("going back to the main menu in 5 seconds...", 500.0f, 500.f, 1.0f, glm::vec3(.7f, .7f, .7f), drawable_size);
+	}
+	
 	GL_ERRORS();
 }
 
