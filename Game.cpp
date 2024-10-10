@@ -253,7 +253,7 @@ void Game::update(float elapsed) {
 
 		//spin the wheel based on velocity and input direction
 		rotate_angle[i] -= glm::length(p.velocity) * elapsed * .5f;
-		rotate_angle[i] = std::fmodf(rotate_angle[i], 360.0f);
+		rotate_angle[i] = std::fmod(rotate_angle[i], 360.0f);
 
 		p.wheel_rotation = initial_player_state[i].wheel_rotation; 
 
